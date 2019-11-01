@@ -278,7 +278,7 @@ void TCPDude::StopServer() {
 //***************************************************************************************
 //--- Функция отправки данных -----------------------------------------------------------
 //***************************************************************************************
-void TCPDude::Write(int socketDescriptor, uint8_t *data, size_t size){
+void TCPDude::Send(int socketDescriptor, uint8_t *data, size_t size){
     write(socketDescriptor, data, size);
 }
 

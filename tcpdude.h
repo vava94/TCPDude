@@ -66,7 +66,7 @@ public:
     ~TCPDude(); //Деструктор
     int GetOperationMode(); // Возвращает режим работы
     int GetSocketDescriptor(string address);
-    void Write(int socketDescriptor, uint8_t *data, size_t size);
+    void Send(int socketDescriptor, uint8_t *data, size_t size);
     //--- Сервер ------------------------------------------------------------------------
     void StartServer(uint16_t port); // Функция запуска сервера
     void StopServer();  // Функция остановки сервера
