@@ -39,8 +39,6 @@ TCPDude::TCPDude(int operationMode,
     targetSockets = reinterpret_cast<TargetSocket*>(malloc(sizeof (TargetSocket)));
     ErrorHandlerCallback = _ErrorHandlerCallback;
     DataReadyCallback = _DataReadyCallback;
-
-
 }
 
 //***************************************************************************************
@@ -48,15 +46,22 @@ TCPDude::TCPDude(int operationMode,
 //***************************************************************************************
 void *TCPDude::ReadLoop(void *arg) {
     TargetSocket *_targetSocket = reinterpret_cast<TargetSocket*>(arg);
+
     string _address = "";
     switch (reinterpret_cast<sockaddr *>(_targetSocket->AddressPtr())->sa_family) {
-    case AF_INET:
-        inet_ntop(AF_INET, &(_targetSocket->AddressPtr()->sin_addr), &_address[0], 15);
+    case AF_INET: {
+        char _addr[16];
+        inet_ntop(AF_INET, &(_targetSocket->AddressPtr()->sin_addr), _addr, sizeof (_addr));
+        _address = _addr;
         break;
+    }
 
-    case AF_INET6:
-        inet_ntop(AF_INET6, &(_targetSocket->AddressPtr()->sin_addr), &_address[0], 15);
+    case AF_INET6: {
+        char _addr[39];
+        inet_ntop(AF_INET6, &(_targetSocket->AddressPtr()->sin_addr), _addr, sizeof (_addr));
+        _address = _addr;
         break;
+    }
     }
     uint8_t
         _receiveBuffer[MAX_READ_BYTES],
@@ -73,8 +78,6 @@ void *TCPDude::ReadLoop(void *arg) {
         if(_bytesRead == 0) {
             _targetSocket->Disconnect();
         } else {
-
-
             // Если данные новые
             if(_expectedSize == 0) {
 
@@ -87,7 +90,7 @@ void *TCPDude::ReadLoop(void *arg) {
 
                     if(_bytesRead == _expectedSize) {
                         DataReadyCallback(_address, _receiveBuffer[0],
-                                _receiveBuffer, _expectedSize);
+                                &_receiveBuffer[0], _expectedSize);
                         _bytesRead -= _expectedSize;
                         _expectedSize = 0;
                         _totalBytesRead = 0;
