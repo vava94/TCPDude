@@ -24,15 +24,14 @@ using namespace std;
 //--- Callbacks -------------------------------------------------------------------------
 //***************************************************************************************
 
-static void (*DataReadyCallback)(string address, uint8_t cmd,
-                                 uint8_t* data, size_t size);
+static void (*DataReadyCallback)(string address, uint8_t* data, size_t size);
 static void (*ErrorHandlerCallback)(int errorCode);
 
 //***************************************************************************************
 //--- Конструктор -----------------------------------------------------------------------
 //***************************************************************************************
 TCPDude::TCPDude(int operationMode,
-                 void(*_DataReadyCallback)(string, uint8_t, uint8_t*, size_t),
+                 void(*_DataReadyCallback)(string, uint8_t*, size_t),
                  void(*_ErrorHandlerCallback)(int)) {
     staticThis = this;
     this->operationMode = operationMode;
@@ -46,89 +45,34 @@ TCPDude::TCPDude(int operationMode,
 //***************************************************************************************
 void *TCPDude::ReadLoop(void *arg) {
     TargetSocket *_targetSocket = reinterpret_cast<TargetSocket*>(arg);
-
     string _address = "";
     switch (reinterpret_cast<sockaddr *>(_targetSocket->AddressPtr())->sa_family) {
-    case AF_INET: {
-        char _addr[16];
-        inet_ntop(AF_INET, &(_targetSocket->AddressPtr()->sin_addr), _addr, sizeof (_addr));
-        _address = _addr;
-        break;
-    }
+        case AF_INET: {
+            char _addr[16];
+            inet_ntop(AF_INET, &(_targetSocket->AddressPtr()->sin_addr),
+                      _addr, sizeof (_addr));
+            _address = _addr;
+            break;
+        }
 
-    case AF_INET6: {
-        char _addr[39];
-        inet_ntop(AF_INET6, &(_targetSocket->AddressPtr()->sin_addr), _addr, sizeof (_addr));
-        _address = _addr;
-        break;
+        case AF_INET6: {
+            char _addr[39];
+            inet_ntop(AF_INET6, &(_targetSocket->AddressPtr()->sin_addr),
+                      _addr, sizeof (_addr));
+            _address = _addr;
+            break;
+        }
     }
-    }
-    uint8_t
-        _receiveBuffer[MAX_READ_BYTES],
-        *_receivedData = nullptr;
-    long _bytesRead = 0, _totalBytesRead = 0;
-    unsigned int _expectedSize = 0;
+    uint8_t _receiveBuffer[MAX_READ_BYTES];
+    long _bytesRead = 0;
+
     while (_targetSocket->IsConnected()) {
         bzero(_receiveBuffer, MAX_READ_BYTES);
-        _bytesRead = read(_targetSocket->Descriptor(),
-                          _receiveBuffer,
-                          MAX_READ_BYTES);
-
-
+        _bytesRead = read(_targetSocket->Descriptor(), _receiveBuffer, MAX_READ_BYTES);
         if(_bytesRead == 0) {
             _targetSocket->Disconnect();
         } else {
-            // Если данные новые
-            if(_expectedSize == 0) {
-
-                if(_bytesRead > 4) {
-                    _expectedSize =
-                            (static_cast<uint>(_receiveBuffer[1] << 0x18) & 0xFF000000) |
-                            (static_cast<uint>(_receiveBuffer[2] << 0x10) & 0x00FF0000) |
-                            (static_cast<uint>(_receiveBuffer[3] << 0x08) & 0x0000FF00) |
-                            (static_cast<uint>(_receiveBuffer[4] & 0xFF));
-
-                    if(_bytesRead == _expectedSize) {
-                        DataReadyCallback(_address, _receiveBuffer[0],
-                                &_receiveBuffer[0], _expectedSize);
-                        _bytesRead -= _expectedSize;
-                        _expectedSize = 0;
-                        _totalBytesRead = 0;
-                    } else {
-                        _receivedData = static_cast<uint8_t*>(
-                                    realloc(_receivedData, _expectedSize * 2));
-                        memset(_receivedData, 0, _expectedSize * 2);
-                        _totalBytesRead += _bytesRead;
-                    }
-                }
-            }
-            // Если ожидаются данные
-            else {
-                memcpy(&_receivedData[_totalBytesRead], _receivedData,
-                       static_cast<size_t>(_bytesRead));
-                _totalBytesRead += _bytesRead;
-                if(_totalBytesRead >= _expectedSize) {
-                    DataReadyCallback(_address, _receivedData[0],
-                            _receivedData, _expectedSize);
-                    _totalBytesRead -= _expectedSize;
-                    if(_totalBytesRead > 4) {
-                        _receivedData = static_cast<uint8_t*>(
-                                    realloc(&_receivedData[_expectedSize],
-                                            static_cast<size_t>(_totalBytesRead)));
-                        _expectedSize =
-                                (static_cast<uint>(_receiveBuffer[1] << 0x18) & 0xFF000000) |
-                                (static_cast<uint>(_receiveBuffer[2] << 0x10) & 0x00FF0000) |
-                                (static_cast<uint>(_receiveBuffer[3] << 0x08) & 0x0000FF00) |
-                                (static_cast<uint>(_receiveBuffer[4] & 0xFF));
-
-                    } else {
-                        _receivedData = static_cast<uint8_t*>(
-                                    realloc(&_receivedData[_expectedSize], 1));
-                        DataReadyCallback(_address, 0xFF, nullptr, 0);
-                        _expectedSize = 0;
-                    }
-                }
-            }
+            DataReadyCallback(_address, _receiveBuffer, static_cast<size_t>(_bytesRead));
         }
     }
     staticThis->ClientDisconnected(_targetSocket->Descriptor());
@@ -228,6 +172,7 @@ void *TCPDude::ListenLoop(void*) {
 //--- Функция обработки подключения новых сокетов ---------------------------------------
 //***************************************************************************************
 void TCPDude::NewTarget(int socketDescriptor, sockaddr_in clientAddress) {
+    printf("TCP descriptor: %d", socketDescriptor);
     targetsCount ++;
     if(targetsCount > 1) {
         targetSockets = reinterpret_cast<TargetSocket*>(
@@ -282,8 +227,7 @@ void TCPDude::StopServer() {
 //--- Функция отправки данных -----------------------------------------------------------
 //***************************************************************************************
 void TCPDude::Send(int socketDescriptor, uint8_t *data, size_t size){
-    int _i = 0;
-    _i = write(socketDescriptor, data, size);
+    write(socketDescriptor, data, size);
 }
 
 //***************************************************************************************

@@ -18,7 +18,6 @@ class TCPDude {
 private:
     // Структура удалённого сокета
     struct TargetSocket {
-
     private:
         bool connected = true;
         int socketDescriptor;
@@ -60,8 +59,7 @@ public:
     };
     // Конструктор
     TCPDude(int operationMode,
-            void(*DataReadyCallback)(string address, uint8_t cmd,
-                                     uint8_t* data, size_t size),
+            void(*DataReadyCallback)(string address, uint8_t* data, size_t size),
             void(*ErrorCodeCallback)(int errorCode));
     ~TCPDude(); //Деструктор
     int GetOperationMode(); // Возвращает режим работы
