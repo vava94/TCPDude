@@ -48,6 +48,7 @@ private:
 
     function<void(string, uint8_t*, size_t)> DataCallback;
     function<void(int, sockaddr_in)> fNewTarget;
+    function <void(int)> fClientDisconnected;
     function<void(void*, function<void(string, uint8_t*, size_t)>, function<void(int)>)> fReadLoop;
     function<void(int*, bool*, function<void(int, sockaddr_in)>)> fListenLoop;
 

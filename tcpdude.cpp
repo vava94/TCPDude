@@ -37,6 +37,7 @@ TCPDude::TCPDude(int operationMode,
     ErrorHandlerCallback = _ErrorHandlerCallback;
     DataCallback = _DataReadyCallback;
 
+    fClientDisconnected = bind(&TCPDude::ClientDisconnected, this, _1);
     fNewTarget = bind(&TCPDude::NewTarget, this, _1, _2);
     fReadLoop = bind(&TCPDude::ReadLoop, this, _1, _2, _3);
     fListenLoop = bind(&TCPDude::ListenLoop, this, _1, _2, _3);
@@ -181,7 +182,8 @@ void TCPDude::NewTarget(int socketDescriptor, sockaddr_in clientAddress) {
     }
     targetSockets[targetsCount - 1] = TargetSocket(socketDescriptor, clientAddress);
     targetSockets[targetsCount - 1].socketThread = new thread(fReadLoop,
-                reinterpret_cast<void*>(&targetSockets[targetsCount - 1]), DataCallback);
+                reinterpret_cast<void*>(&targetSockets[targetsCount - 1]), DataCallback,
+            fClientDisconnected);
 }
 
 //***************************************************************************************
