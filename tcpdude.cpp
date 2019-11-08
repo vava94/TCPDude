@@ -16,15 +16,14 @@
 //***************************************************************************************
 
 static TCPDude *staticThis;
-#define MAX_READ_BYTES 1024000
-
+#define MAX_READ_BYTES 4096
 using namespace std;
 
 //***************************************************************************************
 //--- Callbacks -------------------------------------------------------------------------
 //***************************************************************************************
 
-static void (*DataReadyCallback)(string address, uint8_t* data, size_t size);
+
 static void (*ErrorHandlerCallback)(int errorCode);
 
 //***************************************************************************************
@@ -37,14 +36,14 @@ TCPDude::TCPDude(int operationMode,
     this->operationMode = operationMode;
     targetSockets = reinterpret_cast<TargetSocket*>(malloc(sizeof (TargetSocket)));
     ErrorHandlerCallback = _ErrorHandlerCallback;
-    DataReadyCallback = _DataReadyCallback;
+    DataCallback = _DataReadyCallback;
 }
 
 //***************************************************************************************
 //--- Цикл приёма данных ----------------------------------------------------------------
 //***************************************************************************************
-void *TCPDude::ReadLoop(void *arg) {
-    TargetSocket *_targetSocket = reinterpret_cast<TargetSocket*>(arg);
+void *TCPDude::ReadLoop(void *targetSocket, function<void(string, uint8_t*, size_t)> DataCallback) {
+    TargetSocket *_targetSocket = reinterpret_cast<TargetSocket*>(targetSocket);
     string _address = "";
     switch (reinterpret_cast<sockaddr *>(_targetSocket->AddressPtr())->sa_family) {
         case AF_INET: {
@@ -63,7 +62,7 @@ void *TCPDude::ReadLoop(void *arg) {
             break;
         }
     }
-    uint8_t _receiveBuffer[MAX_READ_BYTES];
+    uint8_t *_receiveBuffer = static_cast<uint8_t*>(malloc(MAX_READ_BYTES));
     long _bytesRead = 0;
 
     while (_targetSocket->IsConnected()) {
@@ -72,7 +71,7 @@ void *TCPDude::ReadLoop(void *arg) {
         if(_bytesRead == 0) {
             _targetSocket->Disconnect();
         } else {
-            DataReadyCallback(_address, _receiveBuffer, static_cast<size_t>(_bytesRead));
+            DataCallback(_address, _receiveBuffer, static_cast<size_t>(_bytesRead));
         }
     }
     staticThis->ClientDisconnected(_targetSocket->Descriptor());
@@ -179,8 +178,7 @@ void TCPDude::NewTarget(int socketDescriptor, sockaddr_in clientAddress) {
                     realloc(targetSockets, sizeof (TargetSocket) * targetsCount));
     }
     targetSockets[targetsCount - 1] = TargetSocket(socketDescriptor, clientAddress);
-    pthread_create(targetSockets[targetsCount - 1].Thread(), nullptr,
-            TCPDude::ReadLoop, &targetSockets[targetsCount - 1]);
+    targetSockets[targetsCount - 1].socketThread = new thread(TCPDude::ReadLoop, reinterpret_cast<void*>(&targetSockets[targetsCount - 1]), DataCallback);
 }
 
 //***************************************************************************************

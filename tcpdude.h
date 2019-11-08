@@ -3,9 +3,10 @@
 //***************************************************************************************
 //--- Заголовочные ----------------------------------------------------------------------
 //***************************************************************************************
-
+#include <functional>
 #include <netdb.h>
-#include <pthread.h>
+#include <thread>
+#include <vector>
 #include <string>
 
 using namespace std;
@@ -21,7 +22,7 @@ private:
     private:
         bool connected = true;
         int socketDescriptor;
-        pthread_t socketThread;
+
         sockaddr_in socketAddress;
 
     public:
@@ -34,7 +35,7 @@ private:
         inline sockaddr_in Address() { return socketAddress; }
         inline sockaddr_in* AddressPtr() { return &socketAddress; }
         inline int Descriptor() { return socketDescriptor; }
-        inline  pthread_t *Thread() { return &socketThread; }
+        std::thread *socketThread = nullptr;
         inline bool IsConnected() { return connected; }
     };
 
@@ -45,7 +46,8 @@ private:
     int operationMode = -1; // Режим работы
     int socketDescriptor = 0;   // Дескриптор, описывающий сокет сервера
 
-    static void *ReadLoop(void *arg);// Цикл прийма данных
+    function<void(string, uint8_t*, size_t)> DataCallback;
+    static void *ReadLoop(void *targetSocket, function<void(string, uint8_t*, size_t)> DataCallback);// Цикл прийма данных
     void ClientDisconnected(int socketDescriptor);  //Обработчик отключения клиента
     static void *ListenLoop(void*); // Цикл ожидания подключения клиентов
     // Функция обработки нового сокета
@@ -64,6 +66,7 @@ public:
     ~TCPDude(); //Деструктор
     int GetOperationMode(); // Возвращает режим работы
     int GetSocketDescriptor(string address);
+    void *DataReadyCallback(string, uint8_t*, size_t);
     void Send(int socketDescriptor, uint8_t *data, size_t size);
     //--- Сервер ------------------------------------------------------------------------
     void StartServer(uint16_t port); // Функция запуска сервера
