@@ -15,9 +15,9 @@
 //--- Private static variables ----------------------------------------------------------
 //***************************************************************************************
 
-static TCPDude *staticThis;
 #define MAX_READ_BYTES 4096
 using namespace std;
+using namespace placeholders;
 
 //***************************************************************************************
 //--- Callbacks -------------------------------------------------------------------------
@@ -32,17 +32,22 @@ static void (*ErrorHandlerCallback)(int errorCode);
 TCPDude::TCPDude(int operationMode,
                  void(*_DataReadyCallback)(string, uint8_t*, size_t),
                  void(*_ErrorHandlerCallback)(int)) {
-    staticThis = this;
     this->operationMode = operationMode;
     targetSockets = reinterpret_cast<TargetSocket*>(malloc(sizeof (TargetSocket)));
     ErrorHandlerCallback = _ErrorHandlerCallback;
     DataCallback = _DataReadyCallback;
+
+    fNewTarget = bind(&TCPDude::NewTarget, this, _1, _2);
+    fReadLoop = bind(&TCPDude::ReadLoop, this, _1, _2, _3);
+    fListenLoop = bind(&TCPDude::ListenLoop, this, _1, _2, _3);
 }
 
 //***************************************************************************************
 //--- Цикл приёма данных ----------------------------------------------------------------
 //***************************************************************************************
-void *TCPDude::ReadLoop(void *targetSocket, function<void(string, uint8_t*, size_t)> DataCallback) {
+void TCPDude::ReadLoop(void *targetSocket,
+                        function<void(string, uint8_t*, size_t)> DataCallback,
+                        function<void(int)> ClientDisconnected){
     TargetSocket *_targetSocket = reinterpret_cast<TargetSocket*>(targetSocket);
     string _address = "";
     switch (reinterpret_cast<sockaddr *>(_targetSocket->AddressPtr())->sa_family) {
@@ -74,8 +79,7 @@ void *TCPDude::ReadLoop(void *targetSocket, function<void(string, uint8_t*, size
             DataCallback(_address, _receiveBuffer, static_cast<size_t>(_bytesRead));
         }
     }
-    staticThis->ClientDisconnected(_targetSocket->Descriptor());
-    return nullptr;
+    ClientDisconnected(_targetSocket->Descriptor());
 }
 
 //***************************************************************************************
@@ -150,21 +154,19 @@ int TCPDude::GetSocketDescriptor(string address) {
 //***************************************************************************************
 //--- Цикл ожидания подключения клиентов ------------------------------------------------
 //***************************************************************************************
-void *TCPDude::ListenLoop(void*) {
-    auto _socketDescriptor = staticThis->socketDescriptor;
-    while (staticThis->listenFlag) {
+void TCPDude::ListenLoop(int *socketDescriptor, bool *listenFlag, function<void(int, sockaddr_in)> NewTarget) {
+    while (*listenFlag) {
         sockaddr_in _clientAddress;
         int _len = sizeof (_clientAddress);
-        int _clientDescriptor = accept(_socketDescriptor,
+        int _clientDescriptor = accept(*socketDescriptor,
                                        reinterpret_cast<sockaddr*>(&_clientAddress),
                                        reinterpret_cast<socklen_t*>(&_len));
-        if(_clientDescriptor == -1 && staticThis->listenFlag) {
+        if(_clientDescriptor == -1 && *listenFlag) {
             ErrorHandlerCallback(ErrorCode::CLIENT_ACCEPT_FAILED);
         } else {
-            staticThis->NewTarget(_clientDescriptor, _clientAddress);
+            NewTarget(_clientDescriptor, _clientAddress);
         }
     }
-    return nullptr;
 }
 
 //***************************************************************************************
@@ -178,7 +180,8 @@ void TCPDude::NewTarget(int socketDescriptor, sockaddr_in clientAddress) {
                     realloc(targetSockets, sizeof (TargetSocket) * targetsCount));
     }
     targetSockets[targetsCount - 1] = TargetSocket(socketDescriptor, clientAddress);
-    targetSockets[targetsCount - 1].socketThread = new thread(TCPDude::ReadLoop, reinterpret_cast<void*>(&targetSockets[targetsCount - 1]), DataCallback);
+    targetSockets[targetsCount - 1].socketThread = new thread(fReadLoop,
+                reinterpret_cast<void*>(&targetSockets[targetsCount - 1]), DataCallback);
 }
 
 //***************************************************************************************
@@ -209,7 +212,7 @@ void TCPDude::StartServer(uint16_t port) {
         return;
     }
     listenFlag = true;
-    pthread_create(&listenThread, nullptr, TCPDude::ListenLoop, nullptr);
+    listenThread = new thread(fListenLoop, &socketDescriptor, &listenFlag, fNewTarget);
 }
 
 //***************************************************************************************

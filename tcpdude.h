@@ -42,14 +42,21 @@ private:
     ulong targetsCount = 0; //Количество клиентов сервера
     TargetSocket *targetSockets = nullptr;  // Массив клиентов, подключённых к серверу
     bool listenFlag = false;// Флаг, сервер слушает новых клиентов
-    pthread_t listenThread; // Поток для цикла работы сервера
+    thread *listenThread; // Поток для цикла работы сервера
     int operationMode = -1; // Режим работы
     int socketDescriptor = 0;   // Дескриптор, описывающий сокет сервера
 
     function<void(string, uint8_t*, size_t)> DataCallback;
-    static void *ReadLoop(void *targetSocket, function<void(string, uint8_t*, size_t)> DataCallback);// Цикл прийма данных
+    function<void(int, sockaddr_in)> fNewTarget;
+    function<void(void*, function<void(string, uint8_t*, size_t)>, function<void(int)>)> fReadLoop;
+    function<void(int*, bool*, function<void(int, sockaddr_in)>)> fListenLoop;
+
+    void ReadLoop(void *targetSocket,
+                  function<void(string, uint8_t*, size_t)> DataCallback,
+                  function<void(int)> ); // Цикл приёма данных
+
     void ClientDisconnected(int socketDescriptor);  //Обработчик отключения клиента
-    static void *ListenLoop(void*); // Цикл ожидания подключения клиентов
+    void ListenLoop(int*, bool*, function<void(int, sockaddr_in)>); // Цикл ожидания подключения клиентов
     // Функция обработки нового сокета
     void NewTarget(int clientDescriptor, sockaddr_in targetAddress);
 
