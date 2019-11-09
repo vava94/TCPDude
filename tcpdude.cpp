@@ -15,7 +15,7 @@
 //--- Private static variables ----------------------------------------------------------
 //***************************************************************************************
 
-#define MAX_READ_BYTES 4096
+#define MAX_READ_BYTES 40960
 using namespace std;
 using namespace placeholders;
 
