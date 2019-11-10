@@ -47,17 +47,13 @@ private:
     int socketDescriptor = 0;   // Дескриптор, описывающий сокет сервера
 
     function<void(string, uint8_t*, size_t)> DataCallback;
-    function<void(int, sockaddr_in)> fNewTarget;
-    function <void(int)> fClientDisconnected;
-    function<void(void*, function<void(string, uint8_t*, size_t)>, function<void(int)>)> fReadLoop;
-    function<void(int*, bool*, function<void(int, sockaddr_in)>)> fListenLoop;
+    function<void(void*)> fReadLoop;
+    function<void(int)> fListenLoop;
 
-    void ReadLoop(void *targetSocket,
-                  function<void(string, uint8_t*, size_t)> DataCallback,
-                  function<void(int)> ); // Цикл приёма данных
+    void ReadLoop(void *targetSocket); // Цикл приёма данных
 
     void ClientDisconnected(int socketDescriptor);  //Обработчик отключения клиента
-    void ListenLoop(int*, bool*, function<void(int, sockaddr_in)>); // Цикл ожидания подключения клиентов
+    void ListenLoop(int); // Цикл ожидания подключения клиентов
     // Функция обработки нового сокета
     void NewTarget(int clientDescriptor, sockaddr_in targetAddress);
 
