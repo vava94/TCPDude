@@ -39,14 +39,17 @@ private:
         inline bool IsConnected() { return connected; }
     };
 
-    ulong targetsCount = 0; //Количество клиентов сервера
-    TargetSocket *targetSockets = nullptr;  // Массив клиентов, подключённых к серверу
     bool listenFlag = false;// Флаг, сервер слушает новых клиентов
-    thread *listenThread; // Поток для цикла работы сервера
     int operationMode = -1; // Режим работы
     int socketDescriptor = 0;   // Дескриптор, описывающий сокет сервера
+    TargetSocket *targetSockets = nullptr;  // Массив клиентов, подключённых к серверу
+    thread *listenThread; // Поток для цикла работы сервера
+    ulong targetsCount = 0; //Количество клиентов сервера
 
-    function<void(string, uint8_t*, size_t)> DataCallback;
+    function<void(string, uint8_t*, size_t)> DataCallback = nullptr;
+    function<void(int)> ClientConnectedCallback = nullptr;
+    function<void(int)> ClientDisconnectedCallback = nullptr;
+    function<void(int)> ErrorHandlerCallback = nullptr;
     function<void(void*)> fReadLoop;
     function<void(int)> fListenLoop;
 
@@ -64,13 +67,15 @@ public:
         CLIENT_MODE
     };
     // Конструктор
-    TCPDude(int operationMode,
-            void(*DataReadyCallback)(string address, uint8_t* data, size_t size),
-            void(*ErrorCodeCallback)(int errorCode));
+    TCPDude(int operationMode);
     ~TCPDude(); //Деструктор
     int GetOperationMode(); // Возвращает режим работы
     int GetSocketDescriptor(string address);
-    void *DataReadyCallback(string, uint8_t*, size_t);
+    void DataReadyCallback(string, uint8_t*, size_t);
+    void SetDataReadyCallback(function<void(string, uint8_t*, size_t)> DataCallback);
+    void SetClientConnectedCallback(function<void(int socketDescriptor)> ConnectedCallback);
+    void SetClientDisconnectedCallback(function<void(int socketDescriptor)> ConnectedCallback);
+    void SetErrorHandlerCallback(function<void(int)> ErrorHandlerCallback);
     void Send(int socketDescriptor, uint8_t *data, size_t size);
     //--- Сервер ------------------------------------------------------------------------
     void StartServer(uint16_t port); // Функция запуска сервера
@@ -78,6 +83,7 @@ public:
     //--- Клиент ------------------------------------------------------------------------
     // Функция подключения клиента к серверу
     int ClientConnectToServer(string address, unsigned short port);
+    void DisconnectFromServer(int socketDescriptor);
 };
 
 #endif // TCP_SERVER_H

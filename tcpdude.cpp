@@ -24,18 +24,12 @@ using namespace placeholders;
 //***************************************************************************************
 
 
-static void (*ErrorHandlerCallback)(int errorCode);
-
 //***************************************************************************************
 //--- Конструктор -----------------------------------------------------------------------
 //***************************************************************************************
-TCPDude::TCPDude(int operationMode,
-                 void(*_DataReadyCallback)(string, uint8_t*, size_t),
-                 void(*_ErrorHandlerCallback)(int)) {
+TCPDude::TCPDude(int operationMode) {
     this->operationMode = operationMode;
     targetSockets = reinterpret_cast<TargetSocket*>(malloc(sizeof (TargetSocket)));
-    ErrorHandlerCallback = _ErrorHandlerCallback;
-    DataCallback = _DataReadyCallback;
     fReadLoop = bind(&TCPDude::ReadLoop, this, _1);
     fListenLoop = bind(&TCPDude::ListenLoop, this, _1);
 }
@@ -69,6 +63,7 @@ void TCPDude::ReadLoop(void* arg){
     while (_targetSocket->IsConnected()) {
         bzero(_receiveBuffer, MAX_READ_BYTES);
         _bytesRead = recv(_targetSocket->Descriptor(), _receiveBuffer, MAX_READ_BYTES, 0);
+        if(!_targetSocket->IsConnected()) break;
         if(_bytesRead == 0) {
             _targetSocket->Disconnect();
         } else {
@@ -112,6 +107,9 @@ void TCPDude::ClientDisconnected(int socketDescriptor) {
     for(unsigned long _i = 0; _i < targetsCount; _i++) {
         if(targetSockets[_i].Descriptor() == socketDescriptor) {
             if(_i < targetsCount - 1) {
+                if(ClientDisconnectedCallback) {
+                    ClientDisconnectedCallback(static_cast<int>(_i));
+                }
                 memcpy(&targetSockets[_i],
                        &targetSockets[_i+1],
                        sizeof(TargetSocket) * (targetsCount - _i));
@@ -121,9 +119,19 @@ void TCPDude::ClientDisconnected(int socketDescriptor) {
             targetSockets = reinterpret_cast<TargetSocket*>(
                             realloc(targetSockets, sizeof (TargetSocket) *
                                     ((targetsCount == 0) ? 1 : targetsCount)));
+
             break;
         }
     }
+}
+
+//***************************************************************************************
+//--- Функция отключения клиента от сервера ---------------------------------------------
+//***************************************************************************************
+void TCPDude::DisconnectFromServer(int socketDescriptor) {
+    if(operationMode == SERVER_MODE) return;
+    targetSockets[0].Disconnect();
+    close(socketDescriptor);
 }
 
 //***************************************************************************************
@@ -169,7 +177,6 @@ void TCPDude::ListenLoop(int socketDescriptor) {
 //--- Функция обработки подключения новых сокетов ---------------------------------------
 //***************************************************************************************
 void TCPDude::NewTarget(int socketDescriptor, sockaddr_in clientAddress) {
-    printf("TCP descriptor: %d", socketDescriptor);
     targetsCount ++;
     if(targetsCount > 1) {
         targetSockets = reinterpret_cast<TargetSocket*>(
@@ -178,6 +185,38 @@ void TCPDude::NewTarget(int socketDescriptor, sockaddr_in clientAddress) {
     targetSockets[targetsCount - 1] = TargetSocket(socketDescriptor, clientAddress);
     targetSockets[targetsCount - 1].socketThread = new thread(fReadLoop,
                 reinterpret_cast<void*>(&targetSockets[targetsCount - 1]));
+
+    if(ClientConnectedCallback) {
+        ClientDisconnectedCallback(socketDescriptor);
+    }
+}
+
+//***************************************************************************************
+//--- Функция установки обратного вызова для данных -------------------------------------
+//***************************************************************************************
+void TCPDude::SetDataReadyCallback(function<void (string, uint8_t *, size_t)> Callback) {
+    DataCallback = Callback;
+}
+
+//***************************************************************************************
+//--- Функция установки обратного вызова для ошибок -------------------------------------
+//***************************************************************************************
+void TCPDude::SetErrorHandlerCallback(function<void (int)> Callback) {
+    ErrorHandlerCallback = Callback;
+}
+
+//***************************************************************************************
+//--- Функция установки обратного вызова сигнала о подключении клиента ------------------
+//***************************************************************************************
+void TCPDude::SetClientConnectedCallback(function<void (int)> Callback) {
+    ClientConnectedCallback = Callback;
+}
+
+//***************************************************************************************
+//--- Функция установки обратного вызова сигнала об отключении клиента ------------------
+//***************************************************************************************
+void TCPDude::SetClientDisconnectedCallback(function<void (int)> Callback) {
+    ClientDisconnectedCallback = Callback;
 }
 
 //***************************************************************************************
@@ -189,7 +228,8 @@ void TCPDude::StartServer(uint16_t port) {
     struct sockaddr_in _serverAddress;
     socketDescriptor = socket(AF_INET, SOCK_STREAM, 0);
     if(socketDescriptor == -1) {
-        ErrorHandlerCallback(ErrorCode::SOCKET_CREATION_FAILED);
+        if(ErrorHandlerCallback)
+            ErrorHandlerCallback(ErrorCode::SOCKET_CREATION_FAILED);
         return;
     }
     bzero(&_serverAddress, sizeof (_serverAddress));
@@ -199,12 +239,14 @@ void TCPDude::StartServer(uint16_t port) {
     if(bind(socketDescriptor, reinterpret_cast<sockaddr*>(&_serverAddress),
             sizeof (_serverAddress)) != 0) {
         close(socketDescriptor);
-        ErrorHandlerCallback(ErrorCode::SOCKET_BIND_FAILED);
+        if(ErrorHandlerCallback)
+            ErrorHandlerCallback(ErrorCode::SOCKET_BIND_FAILED);
         return;
     }
     if((listen(socketDescriptor, 3)) < 0) {
         close(socketDescriptor);
-        ErrorHandlerCallback(ErrorCode::SOCKET_LISTEN_FAILED);
+        if(ErrorHandlerCallback)
+            ErrorHandlerCallback(ErrorCode::SOCKET_LISTEN_FAILED);
         return;
     }
     listenFlag = true;
@@ -216,8 +258,8 @@ void TCPDude::StartServer(uint16_t port) {
 //***************************************************************************************
 void TCPDude::StopServer() {
     if(operationMode == CLIENT_MODE) return;
-
     listenFlag = false;
+    listenThread->join();
 }
 
 //***************************************************************************************
