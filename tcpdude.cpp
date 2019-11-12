@@ -63,7 +63,8 @@ void TCPDude::ReadLoop(void* arg){
     while (_targetSocket->IsConnected()) {
         bzero(_receiveBuffer, MAX_READ_BYTES);
         _bytesRead = recv(_targetSocket->Descriptor(), _receiveBuffer, MAX_READ_BYTES, 0);
-        if(!_targetSocket->IsConnected()) break;
+        if(!_targetSocket->IsConnected())
+            break;
         if(_bytesRead == 0) {
             _targetSocket->Disconnect();
         } else {
@@ -93,7 +94,9 @@ int TCPDude::ClientConnectToServer(string address, unsigned short port) {
 
     if (connect(_targetDescriptor, reinterpret_cast<sockaddr *>(&_targetAddress),
                        sizeof(_targetAddress)) < 0) {
-        ErrorHandlerCallback(ErrorCode::SOCKET_CONNECT_FAILED);
+        if(ErrorHandlerCallback) {
+            ErrorHandlerCallback(ErrorCode::SOCKET_CONNECT_FAILED);
+        }
         return -1;
     }
     NewTarget(_targetDescriptor, _targetAddress);
@@ -107,12 +110,12 @@ void TCPDude::ClientDisconnected(int socketDescriptor) {
     for(unsigned long _i = 0; _i < targetsCount; _i++) {
         if(targetSockets[_i].Descriptor() == socketDescriptor) {
             if(_i < targetsCount - 1) {
-                if(ClientDisconnectedCallback) {
-                    ClientDisconnectedCallback(static_cast<int>(_i));
-                }
                 memcpy(&targetSockets[_i],
                        &targetSockets[_i+1],
                        sizeof(TargetSocket) * (targetsCount - _i));
+            }
+            if(ClientDisconnectedCallback) {
+                ClientDisconnectedCallback(static_cast<int>(_i));
             }
             targetsCount --;
             bzero(&targetSockets[targetsCount], sizeof (TargetSocket));
@@ -131,7 +134,10 @@ void TCPDude::ClientDisconnected(int socketDescriptor) {
 void TCPDude::DisconnectFromServer(int socketDescriptor) {
     if(operationMode == SERVER_MODE) return;
     targetSockets[0].Disconnect();
+    this_thread::sleep_for(chrono::milliseconds(100));
+    shutdown(socketDescriptor, SHUT_RDWR);
     close(socketDescriptor);
+    targetSockets[0].socketThread->join();
 }
 
 //***************************************************************************************
