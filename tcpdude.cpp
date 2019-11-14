@@ -139,7 +139,6 @@ void TCPDude::DisconnectFromServer(int socketDescriptor) {
     this_thread::sleep_for(chrono::milliseconds(100));
     shutdown(socketDescriptor, SHUT_RDWR);
     close(socketDescriptor);
-    targetSockets[0].socketThread->join();
 }
 
 //***************************************************************************************
