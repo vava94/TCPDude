@@ -20,9 +20,9 @@ using namespace std;
 using namespace placeholders;
 
 //***************************************************************************************
-//--- Callbacks -------------------------------------------------------------------------
+//--- Внешнии функции main --------------------------------------------------------------
 //***************************************************************************************
-
+void ClientDisconnected(int socketDescriptor);
 
 //***************************************************************************************
 //--- Конструктор -----------------------------------------------------------------------
@@ -122,7 +122,9 @@ void TCPDude::ClientDisconnected(int socketDescriptor) {
             targetSockets = reinterpret_cast<TargetSocket*>(
                             realloc(targetSockets, sizeof (TargetSocket) *
                                     ((targetsCount == 0) ? 1 : targetsCount)));
-
+            if(ClientDisconnectedCallback != nullptr) {
+                ClientDisconnectedCallback(socketDescriptor);
+            }
             break;
         }
     }
