@@ -118,7 +118,7 @@ void TCPDude::ClientDisconnected(int socketDescriptor) {
                 ClientDisconnectedCallback(static_cast<int>(_i));
             }
             targetsCount --;
-            bzero(&targetSockets[targetsCount], sizeof (TargetSocket));
+            memset(&targetSockets[targetsCount], 0, sizeof (TargetSocket));
             targetSockets = reinterpret_cast<TargetSocket*>(
                             realloc(targetSockets, sizeof (TargetSocket) *
                                     ((targetsCount == 0) ? 1 : targetsCount)));
@@ -139,6 +139,7 @@ void TCPDude::DisconnectFromServer(int socketDescriptor) {
     this_thread::sleep_for(chrono::milliseconds(100));
     shutdown(socketDescriptor, SHUT_RDWR);
     close(socketDescriptor);
+
 }
 
 //***************************************************************************************
@@ -266,7 +267,9 @@ void TCPDude::StartServer(uint16_t port) {
 void TCPDude::StopServer() {
     if(operationMode == CLIENT_MODE) return;
     listenFlag = false;
-    listenThread->join();
+    if (listenThread != nullptr) {
+        listenThread->join();
+    }
 }
 
 //***************************************************************************************
