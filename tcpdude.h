@@ -4,10 +4,23 @@
 //--- Заголовочные ----------------------------------------------------------------------
 //***************************************************************************************
 #include <functional>
-#include <netdb.h>
+
 #include <thread>
 #include <vector>
 #include <string>
+
+#ifdef _WIN32
+#include <WinSock2.h>
+#include <WS2tcpip.h>
+typedef unsigned char uchar;
+typedef unsigned int uint;
+typedef unsigned long ulong;
+#elif __linux
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <unistd.h>
+#endif
+
 
 using namespace std;
 //***************************************************************************************
@@ -46,7 +59,7 @@ private:
     thread *listenThread; // Поток для цикла работы сервера
     ulong targetsCount = 0; //Количество клиентов сервера
 
-    function<void(string, uint8_t*, size_t)> DataCallback = nullptr;
+    function<void(string, uchar*, ulong)> DataCallback = nullptr;
     function<void(int)> ClientConnectedCallback = nullptr;
     function<void(int)> ClientDisconnectedCallback = nullptr;
     function<void(int)> ErrorHandlerCallback = nullptr;
@@ -71,12 +84,12 @@ public:
     ~TCPDude(); //Деструктор
     int GetOperationMode(); // Возвращает режим работы
     int GetSocketDescriptor(string address);
-    void DataReadyCallback(string, uint8_t*, size_t);
-    void SetDataReadyCallback(function<void(string, uint8_t*, size_t)> DataCallback);
+    void DataReadyCallback(string, uchar*, ulong);
+    void SetDataReadyCallback(function<void(string, uchar*, ulong)> DataCallback);
     void SetClientConnectedCallback(function<void(int socketDescriptor)> ConnectedCallback);
     void SetClientDisconnectedCallback(function<void(int socketDescriptor)> ConnectedCallback);
     void SetErrorHandlerCallback(function<void(int)> ErrorHandlerCallback);
-    void Send(int socketDescriptor, uint8_t *data, size_t size);
+    void Send(int socketDescriptor, uchar *data, ulong size);
     //--- Сервер ------------------------------------------------------------------------
     void StartServer(uint16_t port); // Функция запуска сервера
     void StopServer();  // Функция остановки сервера

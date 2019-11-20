@@ -5,11 +5,6 @@
 #include "../shared_sources/errors.h"
 #include "tcpdude.h"
 
-//-- С++
-#include <cstring>
-#include <unistd.h>
-#include <arpa/inet.h>
-
 
 //***************************************************************************************
 //--- Private static variables ----------------------------------------------------------
@@ -57,12 +52,17 @@ void TCPDude::ReadLoop(void* arg){
             break;
         }
     }
-    uint8_t *_receiveBuffer = static_cast<uint8_t*>(malloc(MAX_READ_BYTES));
+    uchar *_receiveBuffer = static_cast<uint8_t*>(malloc(MAX_READ_BYTES));
     long _bytesRead = 0;
 
     while (_targetSocket->IsConnected()) {
-        bzero(_receiveBuffer, MAX_READ_BYTES);
-        _bytesRead = recv(_targetSocket->Descriptor(), _receiveBuffer, MAX_READ_BYTES, 0);
+        memset(_receiveBuffer, 0, MAX_READ_BYTES);
+#ifdef _WIN32
+		_bytesRead = recv(_targetSocket->Descriptor(), 
+			reinterpret_cast<char*>(_receiveBuffer), MAX_READ_BYTES, 0);
+#elif __linux
+		_bytesRead = recv(_targetSocket->Descriptor(), _receiveBuffer, MAX_READ_BYTES, 0);
+#endif
         if(!_targetSocket->IsConnected())
             break;
         if(_bytesRead == 0) {
@@ -85,7 +85,7 @@ int TCPDude::ClientConnectToServer(string address, unsigned short port) {
         ErrorHandlerCallback(ErrorCode::SOCKET_CREATION_FAILED);
         return -1;
     }
-    bzero(&_targetAddress, sizeof (_targetAddress));
+    memset(&_targetAddress, 0, sizeof (_targetAddress));
     _targetAddress.sin_family = AF_INET;
     _targetAddress.sin_port = htons(port);
 
@@ -107,7 +107,7 @@ int TCPDude::ClientConnectToServer(string address, unsigned short port) {
 //--- Функция обработки отключения клиента ----------------------------------------------
 //***************************************************************************************
 void TCPDude::ClientDisconnected(int socketDescriptor) {
-    for(unsigned long _i = 0; _i < targetsCount; _i++) {
+    for(ulong _i = 0; _i < targetsCount; _i++) {
         if(targetSockets[_i].Descriptor() == socketDescriptor) {
             if(_i < targetsCount - 1) {
                 memcpy(&targetSockets[_i],
@@ -137,8 +137,13 @@ void TCPDude::DisconnectFromServer(int socketDescriptor) {
     if(operationMode == SERVER_MODE) return;
     targetSockets[0].Disconnect();
     this_thread::sleep_for(chrono::milliseconds(100));
-    shutdown(socketDescriptor, SHUT_RDWR);
-    close(socketDescriptor);
+#ifdef _WIN32
+	shutdown(socketDescriptor, SD_BOTH);
+	closesocket(socketDescriptor);
+#elif __linux
+	shutdown(socketDescriptor, SHUT_RDWR);
+	close(socketDescriptor);
+#endif
 
 }
 
@@ -202,7 +207,7 @@ void TCPDude::NewTarget(int socketDescriptor, sockaddr_in clientAddress) {
 //***************************************************************************************
 //--- Функция установки обратного вызова для данных -------------------------------------
 //***************************************************************************************
-void TCPDude::SetDataReadyCallback(function<void (string, uint8_t *, size_t)> Callback) {
+void TCPDude::SetDataReadyCallback(function<void (string, uchar *, ulong)> Callback) {
     DataCallback = Callback;
 }
 
@@ -240,19 +245,34 @@ void TCPDude::StartServer(uint16_t port) {
             ErrorHandlerCallback(ErrorCode::SOCKET_CREATION_FAILED);
         return;
     }
-    bzero(&_serverAddress, sizeof (_serverAddress));
+    memset(&_serverAddress, 0, sizeof (_serverAddress));
     _serverAddress.sin_family = AF_INET;
     _serverAddress.sin_addr.s_addr = htonl(INADDR_ANY);
     _serverAddress.sin_port = htons(port);
-    if(bind(socketDescriptor, reinterpret_cast<sockaddr*>(&_serverAddress),
+    if(::bind(socketDescriptor, reinterpret_cast<sockaddr*>(&_serverAddress),
             sizeof (_serverAddress)) != 0) {
-        close(socketDescriptor);
+
+#ifdef _WIN32
+		shutdown(socketDescriptor, SD_BOTH);
+		closesocket(socketDescriptor);
+#elif __linux
+		shutdown(socketDescriptor, SHUT_RDWR);
+		close(socketDescriptor);
+#endif
+        
         if(ErrorHandlerCallback)
             ErrorHandlerCallback(ErrorCode::SOCKET_BIND_FAILED);
         return;
     }
     if((listen(socketDescriptor, 3)) < 0) {
-        close(socketDescriptor);
+
+#ifdef _WIN32
+		shutdown(socketDescriptor, SD_BOTH);
+		closesocket(socketDescriptor);
+#elif __linux
+		shutdown(socketDescriptor, SHUT_RDWR);
+		close(socketDescriptor);
+#endif
         if(ErrorHandlerCallback)
             ErrorHandlerCallback(ErrorCode::SOCKET_LISTEN_FAILED);
         return;
@@ -275,8 +295,13 @@ void TCPDude::StopServer() {
 //***************************************************************************************
 //--- Функция отправки данных -----------------------------------------------------------
 //***************************************************************************************
-void TCPDude::Send(int socketDescriptor, uint8_t *data, size_t size){
-    send(socketDescriptor, data, size, 0);
+void TCPDude::Send(int socketDescriptor, uchar *data, ulong size){
+
+#ifdef _WIN32
+	send(socketDescriptor, reinterpret_cast<char*>(data), size, 0);
+#elif __linux
+	send(socketDescriptor, data, size, 0);
+#endif
 }
 
 //***************************************************************************************
