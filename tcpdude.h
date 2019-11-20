@@ -1,5 +1,4 @@
-#ifndef TCPSERVER_H
-#define TCPSERVER_H
+#pragma once
 //***************************************************************************************
 //--- Заголовочные ----------------------------------------------------------------------
 //***************************************************************************************
@@ -19,10 +18,9 @@ typedef unsigned long ulong;
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <unistd.h>
+typedef int SOCKET;
 #endif
 
-
-using namespace std;
 //***************************************************************************************
 //--- Класс, осуществляющий приём и передачу данных по протоколу TCP. Может работать  ---
 //--- как в режиме есервера, так и в режиме клиента. ------------------------------------
@@ -34,12 +32,12 @@ private:
     struct TargetSocket {
     private:
         bool connected = true;
-        int socketDescriptor;
+        SOCKET socketDescriptor;
 
         sockaddr_in socketAddress;
 
     public:
-        TargetSocket(int socketDescriptor, sockaddr_in socketAddress) {
+        TargetSocket(SOCKET socketDescriptor, sockaddr_in socketAddress) {
             this->socketDescriptor = socketDescriptor;
             this->socketAddress = socketAddress;
         }
@@ -47,31 +45,31 @@ private:
         inline void Disconnect() { connected = false; }
         inline sockaddr_in Address() { return socketAddress; }
         inline sockaddr_in* AddressPtr() { return &socketAddress; }
-        inline int Descriptor() { return socketDescriptor; }
+        inline SOCKET Descriptor() { return socketDescriptor; }
         std::thread *socketThread = nullptr;
         inline bool IsConnected() { return connected; }
     };
 
     bool listenFlag = false;// Флаг, сервер слушает новых клиентов
     int operationMode = -1; // Режим работы
-    int socketDescriptor = 0;   // Дескриптор, описывающий сокет сервера
+    SOCKET socketDescriptor = 0;   // Дескриптор, описывающий сокет сервера
     TargetSocket *targetSockets = nullptr;  // Массив клиентов, подключённых к серверу
-    thread *listenThread; // Поток для цикла работы сервера
+    std::thread *listenThread; // Поток для цикла работы сервера
     ulong targetsCount = 0; //Количество клиентов сервера
 
-    function<void(string, uchar*, ulong)> DataCallback = nullptr;
-    function<void(int)> ClientConnectedCallback = nullptr;
-    function<void(int)> ClientDisconnectedCallback = nullptr;
-    function<void(int)> ErrorHandlerCallback = nullptr;
-    function<void(void*)> fReadLoop;
-    function<void(int)> fListenLoop;
+    std::function<void(std::string, uchar*, ulong)> DataCallback = nullptr;
+	std::function<void(SOCKET)> ClientConnectedCallback = nullptr;
+	std::function<void(SOCKET)> ClientDisconnectedCallback = nullptr;
+	std::function<void(int)> ErrorHandlerCallback = nullptr;
+	std::function<void(void*)> fReadLoop;
+	std::function<void(SOCKET)> fListenLoop;
 
     void ReadLoop(void *targetSocket); // Цикл приёма данных
 
-    void ClientDisconnected(int socketDescriptor);  //Обработчик отключения клиента
-    void ListenLoop(int); // Цикл ожидания подключения клиентов
+    void ClientDisconnected(SOCKET socketDescriptor);  //Обработчик отключения клиента
+    void ListenLoop(SOCKET); // Цикл ожидания подключения клиентов
     // Функция обработки нового сокета
-    void NewTarget(int clientDescriptor, sockaddr_in targetAddress);
+    void NewTarget(SOCKET clientDescriptor, sockaddr_in targetAddress);
 
 public:
     // Перечисление режимов работы
@@ -83,20 +81,18 @@ public:
     TCPDude(int operationMode);
     ~TCPDude(); //Деструктор
     int GetOperationMode(); // Возвращает режим работы
-    int GetSocketDescriptor(string address);
-    void DataReadyCallback(string, uchar*, ulong);
-    void SetDataReadyCallback(function<void(string, uchar*, ulong)> DataCallback);
-    void SetClientConnectedCallback(function<void(int socketDescriptor)> ConnectedCallback);
-    void SetClientDisconnectedCallback(function<void(int socketDescriptor)> ConnectedCallback);
-    void SetErrorHandlerCallback(function<void(int)> ErrorHandlerCallback);
-    void Send(int socketDescriptor, uchar *data, ulong size);
+    SOCKET GetSocketDescriptor(std::string address);
+    void DataReadyCallback(std::string, uchar*, ulong);
+    void SetDataReadyCallback(std::function<void(std::string, uchar*, ulong)> DataCallback);
+    void SetClientConnectedCallback(std::function<void(SOCKET socketDescriptor)> ConnectedCallback);
+    void SetClientDisconnectedCallback(std::function<void(SOCKET socketDescriptor)> ConnectedCallback);
+    void SetErrorHandlerCallback(std::function<void(int)> ErrorHandlerCallback);
+    void Send(SOCKET socketDescriptor, uchar *data, ulong size);
     //--- Сервер ------------------------------------------------------------------------
     void StartServer(uint16_t port); // Функция запуска сервера
     void StopServer();  // Функция остановки сервера
     //--- Клиент ------------------------------------------------------------------------
     // Функция подключения клиента к серверу
-    int ClientConnectToServer(string address, unsigned short port);
-    void DisconnectFromServer(int socketDescriptor);
+    SOCKET ClientConnectToServer(std::string address, unsigned short port);
+    void DisconnectFromServer(SOCKET socketDescriptor);
 };
-
-#endif // TCP_SERVER_H
