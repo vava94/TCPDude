@@ -1,42 +1,47 @@
-//***************************************************************************************
-//--- Заголовочные ----------------------------------------------------------------------
-//***************************************************************************************
-//-- Локальные
-#include "../shared_sources/errors.h"
+/**
+ * Created by vava94 ( https://github.com/vava94 )
+ * Source code ( https://github.com/vava94/TCPDude )
+ *
+ * A Class for TCP operations. Can run in server or client mode.
+ *
+ * --> Supports multiple connection.
+ * --> Support UNIX and WIN32.
+ *
+ * Experimental:
+ * --> Maybe can IPv6, not tested.
+ *
+ */
+
+///**************************************************************************************
+///--- Headers --------------------------------------------------------------------------
+///**************************************************************************************
+///-- Local
 #include "tcpdude.h"
 
+///-- C++
+#include <memory.h>
 
-//***************************************************************************************
-//--- Private static variables ----------------------------------------------------------
-//***************************************************************************************
-
-#define MAX_READ_BYTES 81920
-
-//***************************************************************************************
-//--- Внешнии функции main --------------------------------------------------------------
-//***************************************************************************************
-void ClientDisconnected(int socketDescriptor);
-
-//***************************************************************************************
-//--- Конструктор -----------------------------------------------------------------------
-//***************************************************************************************
+/**
+ * Constructor
+ * @param operationMode
+ */
 TCPDude::TCPDude(int operationMode) {
     this->operationMode = operationMode;
-    targetSockets = reinterpret_cast<TargetSocket*>(malloc(sizeof (TargetSocket)));
-    fReadLoop = bind(&TCPDude::ReadLoop, this, std::placeholders::_1);
-    fListenLoop = bind(&TCPDude::ListenLoop, this, std::placeholders::_1);
+    fReadLoop = bind(&TCPDude::readLoop, this, std::placeholders::_1);
+    fListenLoop = std::bind(&TCPDude::mListenLoop, this, std::placeholders::_1);
 }
 
-//***************************************************************************************
-//--- Цикл приёма данных ----------------------------------------------------------------
-//***************************************************************************************
-void TCPDude::ReadLoop(void* arg){
-    TargetSocket *_targetSocket = reinterpret_cast<TargetSocket*>(arg);
-    string _address = "";
-    switch (reinterpret_cast<sockaddr *>(_targetSocket->AddressPtr())->sa_family) {
+/**
+ * Cycle for reading data from clients.
+ * @param targetSocket for reading from.
+ */
+void TCPDude::readLoop(TargetSocket *targetSocket){
+
+    std::string _address;
+    switch (reinterpret_cast<sockaddr *>(targetSocket->address())->sa_family) {
         case AF_INET: {
             char _addr[16];
-            inet_ntop(AF_INET, &(_targetSocket->AddressPtr()->sin_addr),
+            inet_ntop(AF_INET, &(targetSocket->address()->sin_addr),
                       _addr, sizeof (_addr));
             _address = _addr;
             break;
@@ -44,40 +49,39 @@ void TCPDude::ReadLoop(void* arg){
 
         case AF_INET6: {
             char _addr[39];
-            inet_ntop(AF_INET6, &(_targetSocket->AddressPtr()->sin_addr),
+            inet_ntop(AF_INET6, &(targetSocket->address()->sin_addr),
                       _addr, sizeof (_addr));
             _address = _addr;
             break;
         }
     }
-    uchar *_receiveBuffer = static_cast<uchar*>(malloc(MAX_READ_BYTES));
+    char *_receiveBuffer = static_cast<char*>(malloc(MAX_READ_BYTES));
     long _bytesRead = 0;
 
-    while (_targetSocket->IsConnected()) {
+    while (targetSocket->isConnected()) {
         memset(_receiveBuffer, 0, MAX_READ_BYTES);
-#ifdef _WIN32
-		_bytesRead = recv(_targetSocket->Descriptor(), 
-			reinterpret_cast<char*>(_receiveBuffer), MAX_READ_BYTES, 0);
-#elif __linux
-		_bytesRead = recv(_targetSocket->Descriptor(), _receiveBuffer, MAX_READ_BYTES, 0);
-#endif
-        if(!_targetSocket->IsConnected())
+		_bytesRead = recv(targetSocket->descriptor(), _receiveBuffer, MAX_READ_BYTES, 0);
+
+        if(!targetSocket->isConnected())
             break;
         if(_bytesRead == 0) {
-            _targetSocket->Disconnect();
+            targetSocket->disconnect();
         } else {
-            DataCallback(_address, _receiveBuffer, static_cast<ulong>(_bytesRead));
+            dataCallback(_address, _receiveBuffer, static_cast<ulong>(_bytesRead));
         }
     }
-    ClientDisconnected(_targetSocket->Descriptor());
+    clientDisconnected(targetSocket->descriptor());
 }
 
-//***************************************************************************************
-//--- Функция подключения клиента к серверу ---------------------------------------------
-//***************************************************************************************
-SOCKET TCPDude::ClientConnectToServer(string address, unsigned short port) {
-    if(operationMode == SERVER_MODE) return ErrorCode::SOCKET_WRONG_OPERATION_MODE;
-    struct sockaddr_in _targetAddress;
+/**
+ * The function connects the client to the server.
+ * @param address of server
+ * @param port of server
+ * @return server's socket descriptor on success and -1 on fail.
+ */
+SOCKET TCPDude::clientConnectToServer(std::string address, unsigned short port) {
+    if(operationMode == SERVER_MODE) return ErrorCode::WRONG_OPERATION_MODE;
+    sockaddr_in _targetAddress{};
     SOCKET _targetDescriptor = socket(AF_INET, SOCK_STREAM, 0);
     if(_targetDescriptor == -1) {
         ErrorHandlerCallback(ErrorCode::SOCKET_CREATION_FAILED);
@@ -97,148 +101,148 @@ SOCKET TCPDude::ClientConnectToServer(string address, unsigned short port) {
         }
         return -1;
     }
-    NewTarget(_targetDescriptor, _targetAddress);
+    mNewTarget(_targetDescriptor, _targetAddress);
     return _targetDescriptor;
 }
 
 //***************************************************************************************
 //--- Функция обработки отключения клиента ----------------------------------------------
 //***************************************************************************************
-void TCPDude::ClientDisconnected(SOCKET socketDescriptor) {
-    for(ulong _i = 0; _i < targetsCount; _i++) {
-        if(targetSockets[_i].Descriptor() == socketDescriptor) {
-            if(_i < targetsCount - 1) {
-                memcpy(&targetSockets[_i],
-                       &targetSockets[_i+1],
-                       sizeof(TargetSocket) * (targetsCount - _i));
-            }
-            if(ClientDisconnectedCallback) {
-                ClientDisconnectedCallback(static_cast<int>(_i));
-            }
-            targetsCount --;
-            memset(&targetSockets[targetsCount], 0, sizeof (TargetSocket));
-            targetSockets = reinterpret_cast<TargetSocket*>(
-                            realloc(targetSockets, sizeof (TargetSocket) *
-                                    ((targetsCount == 0) ? 1 : targetsCount)));
-            if(ClientDisconnectedCallback != nullptr) {
-                ClientDisconnectedCallback(socketDescriptor);
-            }
-            break;
-        }
+void TCPDude::clientDisconnected(SOCKET clientDescriptor) {
+    if(clientDisconnectedCallback) {
+        clientConnectedCallback(clientDescriptor);
     }
+    targets.erase(clientDescriptor);
 }
 
 //***************************************************************************************
 //--- Функция отключения клиента от сервера ---------------------------------------------
 //***************************************************************************************
-void TCPDude::DisconnectFromServer(SOCKET socketDescriptor) {
+void TCPDude::disconnectFromServer(SOCKET targetDescriptor) {
     if(operationMode == SERVER_MODE) return;
-    targetSockets[0].Disconnect();
-    this_thread::sleep_for(chrono::milliseconds(100));
+    targets[targetDescriptor]->disconnect();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 #ifdef _WIN32
-	shutdown(socketDescriptor, SD_BOTH);
-	closesocket(socketDescriptor);
+	shutdown(targetDescriptor, SD_BOTH);
+	closesocket(targetDescriptor);
 #elif __linux
-	shutdown(socketDescriptor, SHUT_RDWR);
-	close(socketDescriptor);
+	shutdown(targetDescriptor, SHUT_RDWR);
+	close(targetDescriptor);
 #endif
 
 }
 
-//***************************************************************************************
-//--- Функция, возвращающая режим работы ------------------------------------------------
-//***************************************************************************************
-int TCPDude::GetOperationMode() {
+/**
+ *
+ * @return operation mode
+ */
+int TCPDude::getOperationMode() {
     return operationMode;
 }
 
-//***************************************************************************************
-//--- Функция возвращающая прерменную описания сокета по его адресу ---------------------
-//***************************************************************************************
-SOCKET TCPDude::GetSocketDescriptor(string address) {
+/**
+ * Find descriptor by address and port
+ * @param address
+ * @param port
+ * @return socket descriptor
+ */
+SOCKET TCPDude::getSocketDescriptor(const std::string& address, uint16_t port) {
+
     SOCKET _descriptor = -1;
-	sockaddr_in _targetAddress;
-    for (ulong _i = 0; _i < targetsCount; _i++) {
-		inet_pton(AF_INET, address.data(), &_targetAddress.sin_addr);
-        if(targetSockets[_i].Address().sin_addr.s_addr == _targetAddress.sin_addr.s_addr){
-            _descriptor = targetSockets[_i].Descriptor();
+	sockaddr_in _targetAddress {};
+
+	for (auto _target : targets) {
+        switch (reinterpret_cast<sockaddr *>(_target.second->address())->sa_family) {
+            case AF_INET:
+                inet_pton(AF_INET, address.data(), &_targetAddress.sin_addr.s_addr);
+                break;
+            case AF_INET6:
+                inet_pton(AF_INET6, address.data(), &_targetAddress.sin_addr.s_addr);
+                break;
+        }
+
+        if((_target.second->address()->sin_addr.s_addr == _targetAddress.sin_addr.s_addr) &&
+                (_target.second->address()->sin_port == htons(port))){
+            _descriptor = _target.first;
             break;
         }
     }
     return _descriptor;
 }
 
-//***************************************************************************************
-//--- Цикл ожидания подключения клиентов ------------------------------------------------
-//***************************************************************************************
-void TCPDude::ListenLoop(SOCKET socketDescriptor) {
+/**
+ * Server loop to wait for new clients to connect.
+ * @param serverDescriptor
+ */
+void TCPDude::mListenLoop(SOCKET serverDescriptor) {
     while (listenFlag) {
-        sockaddr_in _clientAddress;
+        sockaddr_in _clientAddress {};
         int _len = sizeof (_clientAddress);
-        SOCKET _clientDescriptor = accept(socketDescriptor,
+        SOCKET _clientDescriptor = accept(serverDescriptor,
                                        reinterpret_cast<sockaddr*>(&_clientAddress),
                                        reinterpret_cast<socklen_t*>(&_len));
         if(_clientDescriptor == -1 && listenFlag) {
             ErrorHandlerCallback(ErrorCode::CLIENT_ACCEPT_FAILED);
         } else {
-            NewTarget(_clientDescriptor, _clientAddress);
+            mNewTarget(_clientDescriptor, _clientAddress);
         }
     }
 }
 
-//***************************************************************************************
-//--- Функция обработки подключения новых сокетов ---------------------------------------
-//***************************************************************************************
-void TCPDude::NewTarget(SOCKET socketDescriptor, sockaddr_in clientAddress) {
-    targetsCount ++;
-    if(targetsCount > 1) {
-        targetSockets = reinterpret_cast<TargetSocket*>(
-                    realloc(targetSockets, sizeof (TargetSocket) * targetsCount));
-    }
-    targetSockets[targetsCount - 1] = TargetSocket(socketDescriptor, clientAddress);
-    targetSockets[targetsCount - 1].socketThread = new thread(fReadLoop,
-                reinterpret_cast<void*>(&targetSockets[targetsCount - 1]));
+/**
+ * Private func for handle new target sockets.
+ * @param targetDescriptor
+ * @param targetAddress
+ */
+void TCPDude::mNewTarget(SOCKET targetDescriptor, sockaddr_in targetAddress) {
 
-    if(ClientConnectedCallback) {
-        ClientDisconnectedCallback(socketDescriptor);
+    auto _targetSocket = new TargetSocket(targetDescriptor, targetAddress);
+    targets.emplace(targetDescriptor, _targetSocket);
+    if(clientConnectedCallback) {
+        clientConnectedCallback(targetDescriptor);
     }
+
 }
 
-//***************************************************************************************
-//--- Функция установки обратного вызова для данных -------------------------------------
-//***************************************************************************************
-void TCPDude::SetDataReadyCallback(function<void (string, uchar *, ulong)> Callback) {
-    DataCallback = Callback;
+/**
+ * Callback setting function for received data.
+ * @param callback
+ */
+void TCPDude::setDataReadyCallback
+    (std::function<void (std::string, char *, ulong)> callback) {
+    dataCallback = std::move(callback);
 }
 
 //***************************************************************************************
 //--- Функция установки обратного вызова для ошибок -------------------------------------
 //***************************************************************************************
-void TCPDude::SetErrorHandlerCallback(function<void (int)> Callback) {
-    ErrorHandlerCallback = Callback;
+void TCPDude::setErrorHandlerCallback(std::function<void (int)> Callback) {
+    ErrorHandlerCallback = std::move(Callback);
 }
 
-//***************************************************************************************
-//--- Функция установки обратного вызова сигнала о подключении клиента ------------------
-//***************************************************************************************
-void TCPDude::SetClientConnectedCallback(function<void (SOCKET)> Callback) {
-    ClientConnectedCallback = Callback;
+/**
+ * Callback setup function for a signal about a new connection to the server.
+ * @param callback
+ */
+void TCPDude::setClientConnectedCallback(std::function<void (SOCKET)> callback) {
+    clientConnectedCallback = std::move(callback);
 }
 
-//***************************************************************************************
-//--- Функция установки обратного вызова сигнала об отключении клиента ------------------
-//***************************************************************************************
-void TCPDude::SetClientDisconnectedCallback(function<void (SOCKET)> Callback) {
-    ClientDisconnectedCallback = Callback;
+/**
+ * Callback setup function for a signal about a disconnection from the server.
+ * @param callback
+ */
+void TCPDude::setClientDisconnectedCallback(std::function<void (SOCKET)> callback) {
+    clientDisconnectedCallback = std::move(callback);
 }
 
 //***************************************************************************************
 //--- Функция запуска сервера -----------------------------------------------------------
 //***************************************************************************************
-void TCPDude::StartServer(uint16_t port) {
+void TCPDude::startServer(uint16_t port) {
     if(operationMode == CLIENT_MODE) return;
 
-    struct sockaddr_in _serverAddress;
+    sockaddr_in _serverAddress {};
     socketDescriptor = socket(AF_INET, SOCK_STREAM, 0);
     if(socketDescriptor == -1) {
         if(ErrorHandlerCallback)
@@ -278,13 +282,13 @@ void TCPDude::StartServer(uint16_t port) {
         return;
     }
     listenFlag = true;
-    listenThread = new thread(fListenLoop, socketDescriptor);
+    listenThread = new std::thread(fListenLoop, socketDescriptor);
 }
 
 //***************************************************************************************
 //--- Функция остановки сервера ---------------------------------------------------------
 //***************************************************************************************
-void TCPDude::StopServer() {
+void TCPDude::stopServer() {
     if(operationMode == CLIENT_MODE) return;
     listenFlag = false;
     if (listenThread != nullptr) {
@@ -295,13 +299,8 @@ void TCPDude::StopServer() {
 //***************************************************************************************
 //--- Функция отправки данных -----------------------------------------------------------
 //***************************************************************************************
-void TCPDude::Send(SOCKET socketDescriptor, uchar *data, ulong size){
-
-#ifdef _WIN32
-	send(socketDescriptor, reinterpret_cast<char*>(data), size, 0);
-#elif __linux
-	send(socketDescriptor, data, size, 0);
-#endif
+void TCPDude::send(SOCKET targetDescriptor, char *data, ulong size){
+	::send(socketDescriptor, data, size, 0);
 }
 
 //***************************************************************************************
