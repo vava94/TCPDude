@@ -2,10 +2,14 @@
  * Created by vava94 ( https://github.com/vava94 )
  * Source code ( https://github.com/vava94/TCPDude )
  *
- * A Class for TCP operations. Can run in server or client mode. Server also supports
- * multi-client mode.
+ * A Class for TCP operations. Can run in server or client mode.
  *
- * Supports UNIX and WIN32
+ * --> Supports multiple connection.
+ * --> Support UNIX and WIN32.
+ *
+ * Experimental:
+ * --> Maybe can IPv6, not tested.
+ *
  */
 
 #pragma once
@@ -13,17 +17,15 @@
 ///--- Headers --------------------------------------------------------------------------
 ///**************************************************************************************
 #include <functional>
-
-#include <thread>
-#include <vector>
 #include <map>
 #include <string>
+#include <thread>
+#include <unistd.h>
+#include <vector>
 
 #ifdef _WIN32
 #include <WinSock2.h>
-#include <WS2tcpip.h>
-typedef unsigned char uchar;
-typedef unsigned int uint;
+#include <ws2tcpip.h>
 typedef unsigned long ulong;
 #elif __linux
 #include <arpa/inet.h>
@@ -32,10 +34,6 @@ typedef unsigned long ulong;
 typedef int SOCKET;
 #endif
 
-///**************************************************************************************
-///--- Класс, осуществляющий приём и передачу данных по протоколу TCP. Может работать ---
-///--- как в режиме есервера, так и в режиме клиента. -----------------------------------
-///**************************************************************************************
 class TCPDude {
 
 private:
@@ -46,7 +44,7 @@ private:
     private:
         bool connected = true;
         SOCKET socketDescriptor;
-        sockaddr_in socketAddress;
+        sockaddr_in socketAddress{};
 
     public:
         TargetSocket(SOCKET socketDescriptor, sockaddr_in socketAddress) {
@@ -56,9 +54,9 @@ private:
 
         inline void disconnect() { connected = false; }
         inline sockaddr_in* address() { return &socketAddress; }
-        inline SOCKET descriptor() { return socketDescriptor; }
+        [[nodiscard]] inline SOCKET descriptor() const { return socketDescriptor; }
         std::thread *socketThread = nullptr;
-        inline bool isConnected() { return connected; }
+        [[nodiscard]] inline bool isConnected() const { return connected; }
     };
 
     bool listenFlag = false;    /// Listening for new clients flag
@@ -66,28 +64,31 @@ private:
         mLastError = NO_ERRORS;
     SOCKET socketDescriptor = 0;   /// Server socket descriptor
     std::map<SOCKET, TargetSocket*> targets; /// Array of targets
-    std::thread *listenThread;  /// Listen for new clients thread
+    std::thread *listenThread{};  /// Listen for new clients thread
 
-    std::function<void(SOCKET, char*, size_t)> dataCallback = nullptr;
+    std::function<void(SOCKET, char*, size_t)> mDataCallback = nullptr;
 	std::function<void(SOCKET)> mConnectedCallback = nullptr;
 	std::function<void(SOCKET)> mDisconnectedCallback = nullptr;
-	std::function<void(int)> ErrorHandlerCallback = nullptr;
+	std::function<void(int)> mErrorHandlerCallback = nullptr;
 	std::function<void(TargetSocket *)> fReadLoop;
 	std::function<void(SOCKET)> fListenLoop;
 
-    void readLoop(TargetSocket *targetSocket); // Цикл приёма данных
-
-    void clientDisconnected(SOCKET clientDescriptor);  //Обработчик отключения клиента
-    void mListenLoop(SOCKET serverDescriptor); // Цикл ожидания подключения клиентов
-    // Функция обработки нового сокета
+    void mDisconnected(SOCKET clientDescriptor);
+    void mListenLoop(SOCKET serverDescriptor);
     void mNewTarget(SOCKET targetDescriptor, sockaddr_in targetAddress);
+    void mReadLoop(TargetSocket *targetSocket);
 
 public:
-    // Перечисление режимов работы
+    /**
+     * Operation modes.
+     */
     enum OperationMode {
         SERVER_MODE,
         CLIENT_MODE
     };
+    /**
+     * Error Codes.
+     */
     enum ErrorCode {
         NO_ERRORS,
         WRONG_OPERATION_MODE,
@@ -98,15 +99,39 @@ public:
         SOCKET_BIND_FAILED
     };
 
-    // Конструктор
+    /**
+     * Constructor
+     * @param operationMode
+     */
     explicit TCPDude(int operationMode);
-    ~TCPDude(); //Деструктор
+    /**
+     * Destructor
+     */
+    ~TCPDude();
+    /**
+     * Function for disconnect specific socket.
+     * @param socketDescriptor
+     */
+    void disconnect(SOCKET socketDescriptor);
+    /**
+     * Function disconnecting all connections.
+     */
+    void disconnectAll();
+    /**
+     * Get socket address by descriptor.
+     * @param descriptor
+     * @return address string
+     */
     std::string getAddress(SOCKET descriptor);
-    int getLastError();
+    /**
+     * Get last error code.
+     * @return error code
+     */
+    int getLastError() const;
     /**
      * @return current operation mode;
      */
-    int getOperationMode();
+    int getOperationMode() const;
     /**
      * Search connected socket descriptor by address and port.
      * @param address
@@ -136,12 +161,32 @@ public:
      * @param callback void(int errorCode)
      */
     void setErrorHandlerCallback(std::function<void(int)> callback);
+    /**
+     * Sending function.
+     * Disconnect socket on error transmitting.
+     * @param socketDescriptor
+     * @param data
+     * @param size
+     * @return true on success sending, false in failure.
+     */
     bool send(SOCKET socketDescriptor, char *data, ulong size);
-    //--- Сервер ------------------------------------------------------------------------
-    bool startServer(uint16_t port); // Функция запуска сервера
+    /// Servers function
+    /**
+     * Launch server function.
+     * @param port
+     * @return true on success launch
+     */
+    bool startServer(uint16_t port);
+    /**
+     * Stopping server function.
+     */
     void stopServer();  // Функция остановки сервера
-    //--- Клиент ------------------------------------------------------------------------
-    // Функция подключения клиента к серверу
+    /**
+     * Function for connecting client to server.
+     * @param address
+     * @param port
+     * @return servers socket descriptor on success.
+     */
     SOCKET clientConnectToServer(std::string address, unsigned short port);
-    void disconnectFromServer(SOCKET socketDescriptor);
+
 };
