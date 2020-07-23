@@ -2,7 +2,7 @@
  * Created by vava94 ( https://github.com/vava94 )
  * Source code ( https://github.com/vava94/TCPDude )
  *
- * A Class for TCP operations. Can run in server or client mode.
+ * A Perfect Class for TCP operations. Can run in server or client mode.
  *
  * --> Supports multiple connection.
  * --> Support UNIX and WIN32.
